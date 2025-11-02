@@ -1,0 +1,17 @@
+Get all data : http://localhost:5000/api/posts/
+
+Get Data by ID : 
+http://localhost:5000/api/posts/68ff1bd5d8c7233008c30a0d
+
+create data post method : http://localhost:5000/api/posts/
+
+Login data : http://localhost:5000/api/auth/login
+Register data : http://localhost:5000/api/auth/register
+
+Update Data : http://localhost:5000/api/posts/68ff1bd5d8c7233008c30a0d
+
+Like Data API : http://localhost:5000/api/posts/68ff1bd5d8c7233008c30a0d/like
+
+Unlike Data API : http://localhost:5000/api/posts/68ff1bd5d8c7233008c30a0d/unlike
+
+Delete Data API : http://localhost:5000/api/posts/68ff1bd5d8c7233008c30a0d

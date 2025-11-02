@@ -1,0 +1,345 @@
+These are all codes for blog website backend need to create frontend give all corrected code for frontend in react js, bootstrap & redux toolkit
+===============================
+PostController.js
+import path from 'path'
+import Post from '../models/Post.js'
+
+export const createPost = async (req, res) => {
+  try {
+    const imagePath = req.file ? `uploads/${req.file.filename}` : null
+    const post = await Post.create({
+      title: req.body.title,
+      content: req.body.content,
+      image: imagePath,
+      author: req.user._id,
+    })
+    res.json(post)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ msg: 'Error creating post' })
+  }
+}
+
+export const getPosts = async (req, res) => {
+  try {
+    const posts = await Post.find().populate('author', 'username email')
+    res.json(posts)
+  } catch (err) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+export const getPostById = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id).populate(
+      'author',
+      'username email'
+    )
+    if (!post) return res.status(404).json({ message: 'Post not found' })
+    res.json(post)
+  } catch (err) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+export const updatePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+    if (!post) return res.status(404).json({ message: 'Post not found' })
+
+    if (post.author.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: 'Unauthorized' })
+
+    if (req.file && post.image) {
+      const oldPath = path.join(process.cwd(), post.image)
+      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath)
+      post.image = `/uploads/${req.file.filename}`
+    }
+
+    post.title = req.body.title || post.title
+    post.content = req.body.content || post.content
+
+    const updated = await post.save()
+    res.json(updated)
+  } catch (err) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+export const deletePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+    if (!post) return res.status(404).json({ message: 'Post not found' })
+
+    if (post.author.toString() !== req.user._id.toString())
+      return res.status(403).json({ message: 'Unauthorized' })
+
+    // Delete image if exists
+    if (post.image) {
+      const filePath = path.join(process.cwd(), post.image)
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    }
+
+    await post.deleteOne()
+    res.json({ message: 'Post deleted successfully' })
+  } catch (error) {
+    res.status(500).json({ message: error.message })
+  }
+}
+
+// ✅ Like / Unlike Post
+export const likePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id)
+    if (!post) return res.status(404).json({ message: 'Post not found' })
+
+    const userId = req.user._id.toString()
+    const alreadyLiked = post.likes.includes(userId)
+
+    if (alreadyLiked) {
+      // Unlike the post
+      post.likes = post.likes.filter((id) => id.toString() !== userId)
+    } else {
+      // Like the post
+      post.likes.push(userId)
+    }
+
+    await post.save()
+    res.json({
+      message: alreadyLiked ? 'Post unliked' : 'Post liked',
+      likesCount: post.likes.length,
+      likes: post.likes,
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: 'Error liking post' })
+  }
+}
+=================================================
+authController.js
+import jwt from 'jsonwebtoken'
+import User from '../models/User.js'
+
+const generateToken = (id) =>
+  jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '7d' })
+
+export const registerUser = async (req, res) => {
+  const { username, email, password } = req.body
+  const userExists = await User.findOne({ email })
+  if (userExists) return res.status(400).json({ msg: 'User already exists' })
+
+  const user = await User.create({ username, email, password })
+  res.json({ token: generateToken(user._id), user })
+}
+
+export const loginUser = async (req, res) => {
+  const { email, password } = req.body
+  const user = await User.findOne({ email })
+  if (!user || !(await user.matchPassword(password)))
+    return res.status(400).json({ msg: 'Invalid credentials' })
+  res.json({ token: generateToken(user._id), user })
+}
+=========================================================
+commentController.js
+import Comment from '../models/Comment.js'
+
+export const addComment = async (req, res) => {
+  const comment = await Comment.create({
+    postId: req.params.postId,
+    userId: req.user._id,
+    text: req.body.text,
+  })
+  res.json(comment)
+}
+
+export const getComments = async (req, res) => {
+  const comments = await Comment.find({ postId: req.params.postId }).populate(
+    'userId',
+    'username'
+  )
+  res.json(comments)
+}
+========================================
+postRoutes.js
+import express from 'express'
+import { protect } from '../middleware/authMiddleware.js'
+import upload from '../middleware/uploadMiddleware.js'
+import {
+  createPost,
+  getPosts,
+  getPostById,
+  updatePost,
+  deletePost,
+  likePost,
+} from '../controllers/postController.js'
+
+const router = express.Router()
+
+router
+  .route('/')
+  .get(getPosts)
+  .post(protect, upload.single('image'), createPost)
+
+router
+  .route('/:id')
+  .get(getPostById)
+  .put(protect, upload.single('image'), updatePost)
+  .delete(protect, deletePost)
+
+router.put('/:id/like', protect, likePost)
+
+export default router
+
+===================
+authRoutes.js
+import express from 'express'
+import { registerUser, loginUser } from '../controllers/authController.js'
+const router = express.Router()
+
+router.post('/register', registerUser)
+router.post('/login', loginUser)
+
+export default router
+
+===================
+commentRouts.js
+import express from 'express'
+import { protect } from '../middleware/authMiddleware.js'
+import { addComment, getComments } from '../controllers/commentController.js'
+
+const router = express.Router()
+
+router.route('/:postId').get(getComments).post(protect, addComment)
+
+export default router
+============================
+authMiddleware.js
+import jwt from 'jsonwebtoken'
+import User from '../models/User.js'
+
+export const protect = async (req, res, next) => {
+  // ✅ Corrected header extraction
+  const token = req.header('Authorization')?.split(' ')[1]
+
+  console.log('Received token:', token)
+
+  if (!token) {
+    return res.status(401).json({ msg: 'No token, unauthorized' })
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET)
+    req.user = await User.findById(decoded.id).select('-password')
+    next()
+  } catch (err) {
+    res.status(401).json({ msg: 'Token Invalid' })
+  }
+}
+=============================
+uploadMiddleware.js
+import multer from 'multer'
+import path from 'path'
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/')
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`)
+  },
+})
+
+const fileFilter = (req, file, cb) => {
+  const fileTypes = /jpeg|jpg|png|gif/
+  const extname = fileTypes.test(path.extname(file.originalname).toLowerCase())
+  if (extname) return cb(null, true)
+  cb('Error: Images only!')
+}
+
+const upload = multer({ storage, fileFilter })
+
+export default upload
+===================================
+server.js
+import mongoose from 'mongoose'
+import express from 'express'
+import cors from 'cors'
+import dotenv from 'dotenv'
+import multer from 'multer'
+import connectDB from './config/db.js'
+
+import authRoutes from './routes/authRoutes.js'
+import postRoutes from './routes/postRoutes.js'
+import commentRoutes from './routes/commentRoutes.js'
+
+const app = express()
+app.use(express.json())
+app.use(cors())
+app.use('/uploads', express.static('uploads'))
+
+const PORT = process.env.PORT
+
+app.use('/api/auth', authRoutes)
+app.use('/api/posts', postRoutes)
+app.use('/api/comments', commentRoutes)
+
+app.listen(PORT, () => {
+  connectDB()
+  console.log(`Running at PORT ${PORT}`)
+})
+
+export default app
+=========================================
+Comment.js
+import mongoose from 'mongoose'
+
+const commentSchema = new mongoose.Schema(
+  {
+    postId: { type: mongoose.Schema.Types.ObjectId, ref: 'Post' },
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    text: String,
+  },
+  { timestamps: true }
+)
+
+export default mongoose.model('Comment', commentSchema)
+=============================================
+Posts.js
+import mongoose from 'mongoose'
+
+const postSchema = new mongoose.Schema(
+  {
+    title: String,
+    content: String,
+    author: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    image: { type: String },
+  },
+  {
+    timestamps: true,
+  }
+)
+
+export default mongoose.model('Post', postSchema)
+===========================================
+User.js
+import mongoose from 'mongoose'
+import bcrypt from 'bcryptjs'
+
+const userSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+})
+
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next()
+  this.password = await bcrypt.hash(this.password, 10)
+  next()
+})
+
+userSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password)
+}
+
+export default mongoose.model('User', userSchema)
